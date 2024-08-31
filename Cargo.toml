@@ -1,0 +1,13 @@
+[package]
+name = "github-secrets-manager"
+version = "0.1.0"
+edition = "2021"
+
+[dependencies]
+reqwest = { version = "0.12.7", features = ["json"] }
+serde = { version = "1.0.209", features = ["derive"] }
+tokio = { version = "1.40.0", features = ["full"] }
+base64 = "0.22.1"
+sodiumoxide = "0.2.7"
+serde_json = "1.0.127"
+dotenv = "0.15.0"
