@@ -10,6 +10,7 @@ A Rust application for managing GitHub repository secrets programmatically using
 
 ## Prerequisites
 
+- **Rust Installed**: Ensure you have Rust installed on your machine. Follow the [official Rust installation guide](https://www.rust-lang.org/tools/install) for instructions.
 - **GitHub Personal Access Token**: You'll need a GitHub personal access token with the appropriate permissions to update secrets in the repository.
 
 ## Setup
