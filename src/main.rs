@@ -81,7 +81,6 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     let public_key_bytes = general_purpose::STANDARD.decode(public_key.key)?;
     let pk = box_::PublicKey::from_slice(&public_key_bytes).unwrap();
 
-    // Fetch the existing secrets from GitHub
     let secrets_list_url = format!(
         "https://api.github.com/repos/{}/{}/actions/secrets",
         organization, repository
@@ -108,7 +107,6 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         panic!("Error response: {}", error_text);
     };
 
-    // Track new, updated, and deleted secrets
     let mut new_secrets = Vec::new();
     let mut updated_secrets = Vec::new();
     let mut secrets_to_delete = Vec::new();
@@ -126,7 +124,6 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         }
     }
 
-    // Output the results
     if !new_secrets.is_empty() {
         println!("New secrets to be added:");
         for secret in &new_secrets {
@@ -148,7 +145,6 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         }
     }
 
-    // Update or add secrets
     for secret in new_secrets.iter().chain(updated_secrets.iter()) {
         let sealed_box = sealedbox::seal(secret.value.as_bytes(), &pk);
         let encrypted_value = general_purpose::STANDARD.encode(&sealed_box);
@@ -189,7 +185,6 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         }
     }
 
-    // Delete secrets that are no longer in the JSON
     for secret_name in secrets_to_delete {
         let delete_secret_url = format!(
             "https://api.github.com/repos/{}/{}/actions/secrets/{}",
