@@ -87,7 +87,7 @@ impl GitHubClient {
         }
     }
 
-    pub async fn update_secret(
+    pub async fn upsert_secret(
         &self,
         secret_name: &str,
         encrypted_value: String,

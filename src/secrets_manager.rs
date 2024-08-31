@@ -127,7 +127,7 @@ impl<'a> SecretsManager<'a> {
             let encrypted_value = general_purpose::STANDARD.encode(&sealed_box);
 
             self.client
-                .update_secret(&secret.name, encrypted_value, self.public_key.key_id.clone())
+                .upsert_secret(&secret.name, encrypted_value, self.public_key.key_id.clone())
                 .await?;
         }
 
