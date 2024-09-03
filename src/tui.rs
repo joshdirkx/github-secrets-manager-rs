@@ -4,13 +4,12 @@ use ratatui::{
     backend::Backend,
     layout::{Constraint, Direction, Layout},
     style::{Color, Modifier, Style},
-    text::{Span, Text},
+    text::{Span, Text, Line},
     widgets::{Block, Borders, List, ListItem, ListState, Paragraph},
     Frame, Terminal,
 };
 use std::io;
-use ratatui::text::Line;
-use crate::secrets_manager::SecretsManager;
+use crate::secrets_manager::{SecretsManager, SecretStatus};
 
 enum NavDirection {
     Up,
@@ -43,11 +42,28 @@ impl StatusMessage {
     }
 }
 
+pub struct ColorScheme {
+    pub new: Color,
+    pub existing: Color,
+    pub deleted: Color,
+}
+
+impl Default for ColorScheme {
+    fn default() -> Self {
+        ColorScheme {
+            new: Color::Green,
+            existing: Color::White,
+            deleted: Color::Red,
+        }
+    }
+}
+
 pub struct Tui<'a> {
     secrets_manager: &'a SecretsManager<'a>,
     selected_index: usize,
     app_state: AppState,
     status_message: Option<StatusMessage>,
+    color_scheme: ColorScheme,
 }
 
 impl<'a> Tui<'a> {
@@ -57,6 +73,7 @@ impl<'a> Tui<'a> {
             selected_index: 0,
             app_state: AppState::ListView,
             status_message: None,
+            color_scheme: ColorScheme::default(),
         }
     }
 
@@ -165,9 +182,15 @@ impl<'a> Tui<'a> {
             .get_secrets()
             .iter()
             .map(|s| {
+                let color = match s.status {
+                    Some(SecretStatus::New) => self.color_scheme.new,
+                    Some(SecretStatus::Existing) => self.color_scheme.existing,
+                    Some(SecretStatus::Deleted) => self.color_scheme.deleted,
+                    None => self.color_scheme.existing, // Default to existing if status is None
+                };
                 ListItem::new(Span::styled(
                     &s.name,
-                    Style::default().add_modifier(Modifier::BOLD),
+                    Style::default().fg(color).add_modifier(Modifier::BOLD),
                 ))
             })
             .collect();
@@ -184,6 +207,12 @@ impl<'a> Tui<'a> {
 
     fn render_secret_details(&self, f: &mut Frame, area: ratatui::layout::Rect) {
         if let Some(secret_details) = self.secrets_manager.get_secret_details(self.selected_index) {
+            let status_color = match secret_details.status {
+                SecretStatus::New => self.color_scheme.new,
+                SecretStatus::Existing => self.color_scheme.existing,
+                SecretStatus::Deleted => self.color_scheme.deleted,
+            };
+
             let details = Text::from(vec![
                 Line::from(vec![
                     Span::styled("Name: ", Style::default().add_modifier(Modifier::BOLD)),
@@ -192,6 +221,13 @@ impl<'a> Tui<'a> {
                 Line::from(vec![
                     Span::styled("Value: ", Style::default().add_modifier(Modifier::BOLD)),
                     Span::raw(&secret_details.value),
+                ]),
+                Line::from(vec![
+                    Span::styled("Status: ", Style::default().add_modifier(Modifier::BOLD)),
+                    Span::styled(
+                        format!("{:?}", secret_details.status),
+                        Style::default().fg(status_color),
+                    ),
                 ]),
                 Line::from(vec![
                     Span::styled("Created At: ", Style::default().add_modifier(Modifier::BOLD)),

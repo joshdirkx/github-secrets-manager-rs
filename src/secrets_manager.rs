@@ -1,15 +1,24 @@
 use base64::engine::general_purpose;
 use base64::Engine;
-use serde::Deserialize;
+use serde::{Deserialize, Serialize};
 use sodiumoxide::crypto::{box_, sealedbox};
 
 use crate::github_client::{ExistingSecret, GitHubClient, PublicKeyResponse};
 use std::error::Error;
 
-#[derive(Deserialize)]
+#[derive(Deserialize, Serialize, Clone, Debug, PartialEq)]
+pub enum SecretStatus {
+    New,
+    Existing,
+    Deleted,
+}
+
+#[derive(Deserialize, Serialize, Clone, Debug)]
 pub struct Secret {
     pub name: String,
     pub value: String,
+    #[serde(skip_deserializing)]
+    pub status: Option<SecretStatus>,
 }
 
 #[derive(Clone)]
@@ -18,6 +27,7 @@ pub struct SecretDetails {
     pub value: String,
     pub created_at: String,
     pub updated_at: String,
+    pub status: SecretStatus,
 }
 
 pub struct SecretsManager<'a> {
@@ -29,16 +39,40 @@ pub struct SecretsManager<'a> {
 
 impl<'a> SecretsManager<'a> {
     pub fn new(
-        secrets: Vec<Secret>,
+        mut secrets: Vec<Secret>,
         existing_secrets: Vec<ExistingSecret>,
         public_key: PublicKeyResponse,
         client: &'a GitHubClient,
     ) -> Self {
-        Self {
+        let mut manager = Self {
             secrets,
             existing_secrets,
             public_key,
             client,
+        };
+        manager.update_secret_statuses();
+        manager
+    }
+
+    fn update_secret_statuses(&mut self) {
+        // Update statuses for secrets in our list
+        for secret in &mut self.secrets {
+            if self.existing_secrets.iter().any(|s| s.name == secret.name) {
+                secret.status = Some(SecretStatus::Existing);
+            } else {
+                secret.status = Some(SecretStatus::New);
+            }
+        }
+
+        // Add deleted secrets
+        for existing in &self.existing_secrets {
+            if !self.secrets.iter().any(|s| s.name == existing.name) {
+                self.secrets.push(Secret {
+                    name: existing.name.clone(),
+                    value: String::new(), // We don't know the value
+                    status: Some(SecretStatus::Deleted),
+                });
+            }
         }
     }
 
@@ -51,9 +85,14 @@ impl<'a> SecretsManager<'a> {
             let existing = self.existing_secrets.iter().find(|s| s.name == secret.name);
             SecretDetails {
                 name: secret.name.clone(),
-                value: secret.value.clone(),
+                value: if secret.status == Some(SecretStatus::Deleted) {
+                    "Unknown (Deleted)".to_string()
+                } else {
+                    secret.value.clone()
+                },
                 created_at: existing.map_or_else(|| "N/A".to_string(), |s| s.created_at.clone()),
                 updated_at: existing.map_or_else(|| "N/A".to_string(), |s| s.updated_at.clone()),
+                status: secret.status.clone().expect("Secret status is missing"),
             }
         })
     }
@@ -89,23 +128,11 @@ impl<'a> SecretsManager<'a> {
         let mut secrets_to_delete = Vec::new();
 
         for secret in &self.secrets {
-            match self
-                .existing_secrets
-                .iter()
-                .find(|s| s.name == secret.name)
-            {
-                Some(_) => updated_secrets.push(secret),
-                None => new_secrets.push(secret),
-            }
-        }
-
-        for existing_secret in &self.existing_secrets {
-            if !self
-                .secrets
-                .iter()
-                .any(|s| s.name == existing_secret.name)
-            {
-                secrets_to_delete.push(&existing_secret.name);
+            match secret.status {
+                Some(SecretStatus::New) => new_secrets.push(secret),
+                Some(SecretStatus::Existing) => updated_secrets.push(secret),
+                Some(SecretStatus::Deleted) => secrets_to_delete.push(&secret.name),
+                _ => {}
             }
         }
 
