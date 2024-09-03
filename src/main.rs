@@ -16,6 +16,8 @@ use crossterm::terminal::{disable_raw_mode, enable_raw_mode};
 use ratatui::backend::CrosstermBackend;
 use ratatui::Terminal;
 use std::io;
+use crossterm::terminal::{Clear, ClearType};
+use crossterm::cursor::MoveTo;
 
 #[tokio::main]
 async fn main() -> AppResult<()> {
@@ -31,6 +33,10 @@ async fn main() -> AppResult<()> {
     enable_raw_mode()?;
     let mut stdout = io::stdout();
     execute!(stdout, EnableMouseCapture)?;
+
+    // Clear the entire screen
+    execute!(stdout, Clear(ClearType::All), MoveTo(0, 0))?;
+
     let backend = CrosstermBackend::new(stdout);
     let mut terminal = Terminal::new(backend)?;
 

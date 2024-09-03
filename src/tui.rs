@@ -215,7 +215,7 @@ impl<'a> Tui<'a> {
             .constraints([Constraint::Length(1), Constraint::Length(1), Constraint::Length(1)])
             .split(inner_area);
 
-        f.render_widget(Paragraph::new(&dialog.message).alignment(ratatui::layout::Alignment::Center), chunks[0]);
+        f.render_widget(Paragraph::new(&*dialog.message).alignment(ratatui::layout::Alignment::Center), chunks[0]);
 
         let options = Line::from(vec![
             Span::styled(format!("(Y) {}", dialog.yes_text), Style::default().fg(Color::Green).add_modifier(Modifier::BOLD)),
