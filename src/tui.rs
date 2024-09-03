@@ -10,7 +10,7 @@ use ratatui::{
 };
 use std::io;
 use ratatui::layout::Margin;
-use crate::secrets_manager::{SecretsManager, SecretStatus};
+use crate::core::{SecretsManager, SecretStatus};
 
 enum NavDirection {
     Up,
@@ -76,7 +76,7 @@ impl ConfirmationDialog {
 }
 
 pub struct Tui<'a> {
-    secrets_manager: &'a SecretsManager<'a>,
+    secrets_manager: &'a dyn SecretsManager,
     selected_index: usize,
     app_state: AppState,
     status_message: Option<StatusMessage>,
@@ -85,7 +85,7 @@ pub struct Tui<'a> {
 }
 
 impl<'a> Tui<'a> {
-    pub fn new(secrets_manager: &'a SecretsManager) -> Self {
+    pub fn new(secrets_manager: &'a dyn SecretsManager) -> Self {
         Self {
             secrets_manager,
             selected_index: 0,

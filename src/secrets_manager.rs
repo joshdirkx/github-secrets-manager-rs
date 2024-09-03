@@ -1,44 +1,18 @@
 use base64::engine::general_purpose;
 use base64::Engine;
-use serde::{Deserialize, Serialize};
 use sodiumoxide::crypto::{box_, sealedbox};
 
 use crate::github_client::{ExistingSecret, GitHubClient, PublicKeyResponse};
-use std::error::Error;
-use crate::errors::{AppError, AppResult};
+use crate::core::{Secret, SecretStatus, SecretDetails, SecretsManager, AppError, AppResult};
 
-#[derive(Deserialize, Serialize, Clone, Debug, PartialEq)]
-pub enum SecretStatus {
-    New,
-    Existing,
-    Deleted,
-}
-
-#[derive(Deserialize, Serialize, Clone, Debug)]
-pub struct Secret {
-    pub name: String,
-    pub value: String,
-    #[serde(skip_deserializing)]
-    pub status: Option<SecretStatus>,
-}
-
-#[derive(Clone)]
-pub struct SecretDetails {
-    pub name: String,
-    pub value: String,
-    pub created_at: String,
-    pub updated_at: String,
-    pub status: SecretStatus,
-}
-
-pub struct SecretsManager<'a> {
+pub struct GitHubSecretsManager<'a> {
     secrets: Vec<Secret>,
     existing_secrets: Vec<ExistingSecret>,
     public_key: PublicKeyResponse,
     client: &'a GitHubClient,
 }
 
-impl<'a> SecretsManager<'a> {
+impl<'a> GitHubSecretsManager<'a> {
     pub fn new(
         mut secrets: Vec<Secret>,
         existing_secrets: Vec<ExistingSecret>,
@@ -75,40 +49,6 @@ impl<'a> SecretsManager<'a> {
                 });
             }
         }
-    }
-
-    pub fn get_secrets(&self) -> &Vec<Secret> {
-        &self.secrets
-    }
-
-    pub fn get_secret_details(&self, index: usize) -> Option<SecretDetails> {
-        self.secrets.get(index).map(|secret| {
-            let existing = self.existing_secrets.iter().find(|s| s.name == secret.name);
-            SecretDetails {
-                name: secret.name.clone(),
-                value: if secret.status == Some(SecretStatus::Deleted) {
-                    "Unknown (Deleted)".to_string()
-                } else {
-                    secret.value.clone()
-                },
-                created_at: existing.map_or_else(|| "N/A".to_string(), |s| s.created_at.clone()),
-                updated_at: existing.map_or_else(|| "N/A".to_string(), |s| s.updated_at.clone()),
-                status: secret.status.clone().expect("Secret status is missing"),
-            }
-        })
-    }
-
-    pub async fn manage_secrets(&self) -> AppResult<()> {
-        let pk = self.decode_public_key()?;
-
-        let (new_secrets, updated_secrets, secrets_to_delete) = self.categorize_secrets();
-
-        self.print_secrets_to_manage(&new_secrets, &updated_secrets, &secrets_to_delete);
-
-        self.upsert_secrets(&pk, &new_secrets, &updated_secrets).await?;
-        self.delete_secrets(secrets_to_delete).await?;
-
-        Ok(())
     }
 
     fn decode_public_key(&self) -> AppResult<box_::PublicKey> {
@@ -173,7 +113,7 @@ impl<'a> SecretsManager<'a> {
         pk: &box_::PublicKey,
         new_secrets: &Vec<&Secret>,
         updated_secrets: &Vec<&Secret>,
-    ) -> Result<(), Box<dyn Error>> {
+    ) -> AppResult<()> {
         for secret in new_secrets.iter().chain(updated_secrets.iter()) {
             let sealed_box = sealedbox::seal(secret.value.as_bytes(), &pk);
             let encrypted_value = general_purpose::STANDARD.encode(&sealed_box);
@@ -186,11 +126,49 @@ impl<'a> SecretsManager<'a> {
         Ok(())
     }
 
-    async fn delete_secrets(&self, secrets_to_delete: Vec<&String>) -> Result<(), Box<dyn Error>> {
+    async fn delete_secrets(&self, secrets_to_delete: Vec<&String>) -> AppResult<()> {
         for secret_name in secrets_to_delete {
             self.client.delete_secret(secret_name).await?;
         }
 
         Ok(())
+    }
+}
+
+impl<'a> SecretsManager for GitHubSecretsManager<'a> {
+    fn get_secrets(&self) -> &Vec<Secret> {
+        &self.secrets
+    }
+
+    fn get_secret_details(&self, index: usize) -> Option<SecretDetails> {
+        self.secrets.get(index).map(|secret| {
+            let existing = self.existing_secrets.iter().find(|s| s.name == secret.name);
+            SecretDetails {
+                name: secret.name.clone(),
+                value: if secret.status == Some(SecretStatus::Deleted) {
+                    "Unknown (Deleted)".to_string()
+                } else {
+                    secret.value.clone()
+                },
+                created_at: existing.map_or_else(|| "N/A".to_string(), |s| s.created_at.clone()),
+                updated_at: existing.map_or_else(|| "N/A".to_string(), |s| s.updated_at.clone()),
+                status: secret.status.clone().expect("Secret status is missing"),
+            }
+        })
+    }
+
+    fn manage_secrets(&self) -> AppResult<()> {
+        let pk = self.decode_public_key()?;
+
+        let (new_secrets, updated_secrets, secrets_to_delete) = self.categorize_secrets();
+
+        self.print_secrets_to_manage(&new_secrets, &updated_secrets, &secrets_to_delete);
+
+        // Note: These methods are now synchronous, so we need to handle the async nature differently
+        // This might require changing the SecretsManager trait to be async or using a runtime
+        tokio::runtime::Runtime::new()?.block_on(async {
+            self.upsert_secrets(&pk, &new_secrets, &updated_secrets).await?;
+            self.delete_secrets(secrets_to_delete).await
+        })
     }
 }

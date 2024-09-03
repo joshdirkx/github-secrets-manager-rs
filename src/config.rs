@@ -1,8 +1,7 @@
-use crate::errors::{AppError, AppResult};
+use crate::core::{AppError, AppResult, Secret};
 use dotenv::dotenv;
 use serde::Deserialize;
 use std::env;
-use crate::secrets_manager::Secret;
 
 #[derive(Debug, Deserialize)]
 pub struct Config {

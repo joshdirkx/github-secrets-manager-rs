@@ -1,13 +1,13 @@
 mod config;
-mod errors;
+mod core;
 mod github_client;
 mod secrets_manager;
 mod tui;
 
 use crate::config::Config;
-use crate::errors::AppResult;
+use crate::core::{AppResult, SecretsManager};
 use crate::github_client::GitHubClient;
-use crate::secrets_manager::SecretsManager;
+use crate::secrets_manager::GitHubSecretsManager;
 use crate::tui::Tui;
 
 use crossterm::event::{DisableMouseCapture, EnableMouseCapture};
@@ -25,7 +25,7 @@ async fn main() -> AppResult<()> {
     let public_key = client.get_public_key().await?;
     let existing_secrets = client.get_existing_secrets().await?;
 
-    let secrets_manager = SecretsManager::new(config.secrets, existing_secrets, public_key, &client);
+    let secrets_manager = GitHubSecretsManager::new(config.secrets, existing_secrets, public_key, &client);
 
     // Setup terminal
     enable_raw_mode()?;
@@ -48,7 +48,7 @@ async fn main() -> AppResult<()> {
     }
 
     // Perform actual secret management after TUI closes
-    secrets_manager.manage_secrets().await?;
+    secrets_manager.manage_secrets()?;
 
     Ok(())
 }

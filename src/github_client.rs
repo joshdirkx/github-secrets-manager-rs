@@ -1,6 +1,6 @@
 use reqwest::header::{ACCEPT, AUTHORIZATION, CONTENT_TYPE, USER_AGENT};
 use serde::{Deserialize, Serialize};
-use crate::errors::{AppError, AppResult};
+use crate::core::{AppError, AppResult};
 
 #[derive(Deserialize)]
 pub struct PublicKeyResponse {
