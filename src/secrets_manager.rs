@@ -5,6 +5,7 @@ use sodiumoxide::crypto::{box_, sealedbox};
 
 use crate::github_client::{ExistingSecret, GitHubClient, PublicKeyResponse};
 use std::error::Error;
+use crate::errors::{AppError, AppResult};
 
 #[derive(Deserialize, Serialize, Clone, Debug, PartialEq)]
 pub enum SecretStatus {
@@ -97,7 +98,7 @@ impl<'a> SecretsManager<'a> {
         })
     }
 
-    pub async fn manage_secrets(&self) -> Result<(), Box<dyn Error>> {
+    pub async fn manage_secrets(&self) -> AppResult<()> {
         let pk = self.decode_public_key()?;
 
         let (new_secrets, updated_secrets, secrets_to_delete) = self.categorize_secrets();
@@ -110,10 +111,10 @@ impl<'a> SecretsManager<'a> {
         Ok(())
     }
 
-    fn decode_public_key(&self) -> Result<box_::PublicKey, Box<dyn Error>> {
+    fn decode_public_key(&self) -> AppResult<box_::PublicKey> {
         let public_key_bytes = general_purpose::STANDARD.decode(&self.public_key.key)?;
-        let pk = box_::PublicKey::from_slice(&public_key_bytes).unwrap();
-        Ok(pk)
+        box_::PublicKey::from_slice(&public_key_bytes)
+            .ok_or_else(|| AppError::SodiumError("Failed to create public key".to_string()))
     }
 
     fn categorize_secrets(

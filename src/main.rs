@@ -1,34 +1,31 @@
+mod config;
+mod errors;
 mod github_client;
 mod secrets_manager;
 mod tui;
 
-use dotenv::dotenv;
-use github_client::GitHubClient;
-use secrets_manager::{Secret, SecretsManager};
-use std::{env, io};
+use crate::config::Config;
+use crate::errors::AppResult;
+use crate::github_client::GitHubClient;
+use crate::secrets_manager::SecretsManager;
+use crate::tui::Tui;
+
 use crossterm::event::{DisableMouseCapture, EnableMouseCapture};
 use crossterm::execute;
 use crossterm::terminal::{disable_raw_mode, enable_raw_mode};
 use ratatui::backend::CrosstermBackend;
 use ratatui::Terminal;
-use tui::Tui;
+use std::io;
 
 #[tokio::main]
-async fn main() -> Result<(), Box<dyn std::error::Error>> {
-    dotenv().ok();
-
-    let organization = env::var("GITHUB_ORGANIZATION")?;
-    let repository = env::var("GITHUB_REPOSITORY")?;
-    let token = env::var("GITHUB_TOKEN")?;
-    let secrets_json = env::var("GITHUB_SECRETS")?;
-
-    let secrets: Vec<Secret> = serde_json::from_str(&secrets_json)?;
-    let client = GitHubClient::new(&organization, &repository, &token);
+async fn main() -> AppResult<()> {
+    let config = Config::load()?;
+    let client = GitHubClient::new(&config.organization, &config.repository, &config.token);
 
     let public_key = client.get_public_key().await?;
     let existing_secrets = client.get_existing_secrets().await?;
 
-let secrets_manager = SecretsManager::new(secrets, existing_secrets, public_key, &client);
+    let secrets_manager = SecretsManager::new(config.secrets, existing_secrets, public_key, &client);
 
     // Setup terminal
     enable_raw_mode()?;
@@ -47,7 +44,7 @@ let secrets_manager = SecretsManager::new(secrets, existing_secrets, public_key,
     terminal.show_cursor()?;
 
     if let Err(err) = res {
-        println!("{:?}", err)
+        eprintln!("Error in TUI: {:?}", err);
     }
 
     // Perform actual secret management after TUI closes

@@ -1,6 +1,6 @@
 use reqwest::header::{ACCEPT, AUTHORIZATION, CONTENT_TYPE, USER_AGENT};
 use serde::{Deserialize, Serialize};
-use std::error::Error;
+use crate::errors::{AppError, AppResult};
 
 #[derive(Deserialize)]
 pub struct PublicKeyResponse {
@@ -43,7 +43,7 @@ impl GitHubClient {
         }
     }
 
-    pub async fn get_public_key(&self) -> Result<PublicKeyResponse, Box<dyn Error>> {
+    pub async fn get_public_key(&self) -> AppResult<PublicKeyResponse> {
         let url = format!(
             "https://api.github.com/repos/{}/{}/actions/secrets/public-key",
             self.organization, self.repository
@@ -62,11 +62,11 @@ impl GitHubClient {
             let public_key = response.json::<PublicKeyResponse>().await?;
             Ok(public_key)
         } else {
-            Err(Box::new(response.error_for_status().unwrap_err()))
+            Err(AppError::GitHubApiError(response.error_for_status().unwrap_err()))
         }
     }
 
-    pub async fn get_existing_secrets(&self) -> Result<Vec<ExistingSecret>, Box<dyn Error>> {
+    pub async fn get_existing_secrets(&self) -> AppResult<Vec<ExistingSecret>> {
         let url = format!(
             "https://api.github.com/repos/{}/{}/actions/secrets",
             self.organization, self.repository
@@ -85,7 +85,7 @@ impl GitHubClient {
             let secret_list = response.json::<SecretListResponse>().await?;
             Ok(secret_list.secrets)
         } else {
-            Err(Box::new(response.error_for_status().unwrap_err()))
+            Err(AppError::GitHubApiError(response.error_for_status().unwrap_err()))
         }
     }
 
@@ -94,7 +94,7 @@ impl GitHubClient {
         secret_name: &str,
         encrypted_value: String,
         key_id: String,
-    ) -> Result<(), Box<dyn Error>> {
+    ) -> AppResult<()> {
         let url = format!(
             "https://api.github.com/repos/{}/{}/actions/secrets/{}",
             self.organization, self.repository, secret_name
@@ -117,11 +117,11 @@ impl GitHubClient {
             println!("Secret '{}' updated successfully!", secret_name);
             Ok(())
         } else {
-            Err(Box::new(response.error_for_status().unwrap_err()))
+            Err(AppError::GitHubApiError(response.error_for_status().unwrap_err()))
         }
     }
 
-    pub async fn delete_secret(&self, secret_name: &str) -> Result<(), Box<dyn Error>> {
+    pub async fn delete_secret(&self, secret_name: &str) -> AppResult<()> {
         let url = format!(
             "https://api.github.com/repos/{}/{}/actions/secrets/{}",
             self.organization, self.repository, secret_name
@@ -140,7 +140,7 @@ impl GitHubClient {
             println!("Secret '{}' deleted successfully!", secret_name);
             Ok(())
         } else {
-            Err(Box::new(response.error_for_status().unwrap_err()))
+            Err(AppError::GitHubApiError(response.error_for_status().unwrap_err()))
         }
     }
 }
