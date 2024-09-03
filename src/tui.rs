@@ -2,13 +2,14 @@ use std::time::{Duration, Instant};
 use crossterm::event::{self, Event, KeyCode};
 use ratatui::{
     backend::Backend,
-    layout::{Constraint, Direction, Layout},
+    layout::{Constraint, Direction, Layout, Rect},
     style::{Color, Modifier, Style},
     text::{Span, Text, Line},
-    widgets::{Block, Borders, List, ListItem, ListState, Paragraph},
+    widgets::{Block, Borders, List, ListItem, ListState, Paragraph, Clear},
     Frame, Terminal,
 };
 use std::io;
+use ratatui::layout::Margin;
 use crate::secrets_manager::{SecretsManager, SecretStatus};
 
 enum NavDirection {
@@ -58,12 +59,29 @@ impl Default for ColorScheme {
     }
 }
 
+pub struct ConfirmationDialog {
+    message: String,
+    yes_text: String,
+    no_text: String,
+}
+
+impl ConfirmationDialog {
+    pub fn new(message: String, yes_text: String, no_text: String) -> Self {
+        Self {
+            message,
+            yes_text,
+            no_text,
+        }
+    }
+}
+
 pub struct Tui<'a> {
     secrets_manager: &'a SecretsManager<'a>,
     selected_index: usize,
     app_state: AppState,
     status_message: Option<StatusMessage>,
     color_scheme: ColorScheme,
+    confirmation_dialog: Option<ConfirmationDialog>,
 }
 
 impl<'a> Tui<'a> {
@@ -74,6 +92,7 @@ impl<'a> Tui<'a> {
             app_state: AppState::ListView,
             status_message: None,
             color_scheme: ColorScheme::default(),
+            confirmation_dialog: None,
         }
     }
 
@@ -82,12 +101,48 @@ impl<'a> Tui<'a> {
             terminal.draw(|f| self.ui(f))?;
 
             if let Event::Key(key) = event::read()? {
-                match key.code {
-                    KeyCode::Char('q') => return Ok(()),
-                    KeyCode::Up => self.move_selection(NavDirection::Up),
-                    KeyCode::Down => self.move_selection(NavDirection::Down),
-                    KeyCode::Enter => self.toggle_view(),
-                    _ => {}
+                match self.app_state {
+                    AppState::ListView => {
+                        match key.code {
+                            KeyCode::Char('q') => {
+                                self.show_confirmation_dialog(
+                                    "Are you sure you want to quit?".to_string(),
+                                    "Yes".to_string(),
+                                    "No".to_string(),
+                                );
+                            }
+                            KeyCode::Up => self.move_selection(NavDirection::Up),
+                            KeyCode::Down => self.move_selection(NavDirection::Down),
+                            KeyCode::Enter => self.toggle_view(),
+                            _ => {}
+                        }
+                    }
+                    AppState::DetailsView => {
+                        match key.code {
+                            KeyCode::Enter => self.toggle_view(),
+                            KeyCode::Char('q') => {
+                                self.show_confirmation_dialog(
+                                    "Are you sure you want to quit?".to_string(),
+                                    "Yes".to_string(),
+                                    "No".to_string(),
+                                );
+                            }
+                            _ => {}
+                        }
+                    }
+                }
+
+                if self.confirmation_dialog.is_some() {
+                    match key.code {
+                        KeyCode::Char('y') | KeyCode::Char('Y') => {
+                            self.hide_confirmation_dialog();
+                            return Ok(());
+                        }
+                        KeyCode::Char('n') | KeyCode::Char('N') => {
+                            self.hide_confirmation_dialog();
+                        }
+                        _ => {}
+                    }
                 }
             }
 
@@ -174,9 +229,13 @@ impl<'a> Tui<'a> {
                 .block(Block::default());
             f.render_widget(status_widget, chunks[3]);
         }
+
+        if let Some(dialog) = &self.confirmation_dialog {
+            self.render_confirmation_dialog(f, dialog);
+        }
     }
 
-    fn render_secrets_list(&mut self, f: &mut Frame, area: ratatui::layout::Rect) {
+    fn render_secrets_list(&mut self, f: &mut Frame, area: Rect) {
         let secrets: Vec<ListItem> = self
             .secrets_manager
             .get_secrets()
@@ -205,7 +264,7 @@ impl<'a> Tui<'a> {
         f.render_stateful_widget(secrets_list, area, &mut list_state);
     }
 
-    fn render_secret_details(&self, f: &mut Frame, area: ratatui::layout::Rect) {
+    fn render_secret_details(&self, f: &mut Frame, area: Rect) {
         if let Some(secret_details) = self.secrets_manager.get_secret_details(self.selected_index) {
             let status_color = match secret_details.status {
                 SecretStatus::New => self.color_scheme.new,
@@ -250,5 +309,83 @@ impl<'a> Tui<'a> {
                 .block(Block::default().borders(Borders::ALL).title("Error"));
             f.render_widget(error_message, area);
         }
+    }
+
+    fn render_confirmation_dialog(&self, f: &mut Frame, dialog: &ConfirmationDialog) {
+    let size = f.size();
+    let dialog_area = self.centered_rect(60, 20, size);
+
+    f.render_widget(Clear, dialog_area);
+    f.render_widget(
+        Block::default()
+            .borders(Borders::ALL)
+            .style(Style::default().bg(Color::DarkGray)),
+        dialog_area,
+    );
+
+    let inner_area = dialog_area.inner(Margin::new(1, 1));
+    let chunks = Layout::default()
+        .direction(Direction::Vertical)
+        .constraints(
+            [
+                Constraint::Length(1),
+                Constraint::Length(1),
+                Constraint::Length(1),
+            ]
+            .as_ref(),
+        )
+        .split(inner_area);
+
+    let message = Paragraph::new(dialog.message.as_str())
+        .style(Style::default().fg(Color::White))
+        .alignment(ratatui::layout::Alignment::Center);
+    f.render_widget(message, chunks[0]);
+
+    let yes_text = Span::styled(
+        format!("(Y) {}", dialog.yes_text),
+        Style::default().fg(Color::Green).add_modifier(Modifier::BOLD),
+    );
+    let no_text = Span::styled(
+        format!("(N) {}", dialog.no_text),
+        Style::default().fg(Color::Red).add_modifier(Modifier::BOLD),
+    );
+
+    let options = Paragraph::new(Line::from(vec![yes_text, Span::raw("   "), no_text]))
+        .alignment(ratatui::layout::Alignment::Center);
+    f.render_widget(options, chunks[2]);
+}
+
+    fn centered_rect(&self, percent_x: u16, percent_y: u16, r: Rect) -> Rect {
+        let popup_layout = Layout::default()
+            .direction(Direction::Vertical)
+            .constraints(
+                [
+                    Constraint::Percentage((100 - percent_y) / 2),
+                    Constraint::Percentage(percent_y),
+                    Constraint::Percentage((100 - percent_y) / 2),
+                ]
+                .as_ref(),
+            )
+            .split(r);
+
+        Layout::default()
+            .direction(Direction::Horizontal)
+            .constraints(
+                [
+                    Constraint::Percentage((100 - percent_x) / 2),
+                    Constraint::Percentage(percent_x),
+                    Constraint::Percentage((100 - percent_x) / 2),
+                ]
+                .as_ref(),
+            )
+            .split(popup_layout[1])[1]
+    }
+
+    pub fn show_confirmation_dialog(&mut self, message: String, yes_text: String, no_text: String) {
+        self.confirmation_dialog = Some(ConfirmationDialog::new(message, yes_text, no_text));
+    }
+
+    pub fn hide_confirmation_dialog(&mut self) {
+        self.confirmation_dialog = None;
     }
 }
