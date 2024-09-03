@@ -11,6 +11,8 @@ pub struct PublicKeyResponse {
 #[derive(Deserialize)]
 pub struct ExistingSecret {
     pub name: String,
+    pub created_at: String,
+    pub updated_at: String,
 }
 
 #[derive(Deserialize)]

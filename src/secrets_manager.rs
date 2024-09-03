@@ -12,6 +12,14 @@ pub struct Secret {
     pub value: String,
 }
 
+#[derive(Clone)]
+pub struct SecretDetails {
+    pub name: String,
+    pub value: String,
+    pub created_at: String,
+    pub updated_at: String,
+}
+
 pub struct SecretsManager<'a> {
     secrets: Vec<Secret>,
     existing_secrets: Vec<ExistingSecret>,
@@ -32,6 +40,22 @@ impl<'a> SecretsManager<'a> {
             public_key,
             client,
         }
+    }
+
+    pub fn get_secrets(&self) -> &Vec<Secret> {
+        &self.secrets
+    }
+
+    pub fn get_secret_details(&self, index: usize) -> Option<SecretDetails> {
+        self.secrets.get(index).map(|secret| {
+            let existing = self.existing_secrets.iter().find(|s| s.name == secret.name);
+            SecretDetails {
+                name: secret.name.clone(),
+                value: secret.value.clone(),
+                created_at: existing.map_or_else(|| "N/A".to_string(), |s| s.created_at.clone()),
+                updated_at: existing.map_or_else(|| "N/A".to_string(), |s| s.updated_at.clone()),
+            }
+        })
     }
 
     pub async fn manage_secrets(&self) -> Result<(), Box<dyn Error>> {
